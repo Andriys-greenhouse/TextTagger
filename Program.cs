@@ -11,6 +11,7 @@ namespace TextTagger
     {
         static void Main(string[] args)
         {
+            args = new string[] { @"K této knize se svět chová velice <capital>laskavě</capital>. Jen z různých edicí vydaných v <red>Anglii</red> se už prodalo přes půldruhého miliónu výtisků. A v <hide>Chicagu</hide> se mi už před mnoha lety dostalo ujištění - z úst jistého podnikavého piráta nyní v. v. - že víc než <highlight>milión výtisků</highlight> se prodalo ve <green>Spojených státech</green>." };
             string input;
             if (args.Length < 1) { throw new ArgumentException("No argument given!"); }
             if (args.Length > 1)
@@ -23,7 +24,7 @@ namespace TextTagger
                 input = sb.ToString();
             }
             else { input = args[0]; }
-            Regex rx = new Regex(@"\<(?<tagStart>.((?!\<).)*)\>(?<tagContent>.((?!\<).)*)\<\/\1\>");
+            Regex rx = new Regex(@"\<(?<tagStart>.*)\>(?<tagContent>.[^\<]*)\<\/\1\>", RegexOptions.Multiline);
 
             //iniciation of tags
             List<Tag> existingTags = new List<Tag>();
@@ -35,7 +36,7 @@ namespace TextTagger
 
             MatchCollection matches = rx.Matches(input);
             List<string> methodInputs = new List<string>();
-            WriteOutFunction localDelegate;
+            WriteOutFunction localDelegate = new WriteOutFunction(Console.Write);
 
             //searching for unknown tags
             List<int> unknownTagIndexes = new List<int>();
@@ -54,49 +55,60 @@ namespace TextTagger
                 {
                     unknownTagIndexes.Add(ma.Index);
                 }
+                isKnown = false;
             }
 
             //initialize localDelegate
             int lastIndex = 0;
-            for (int i = 0; i < matches.Count; i++)
+            foreach (Match mch in matches)
             {
-                if (!unknownTagIndexes.Exists(g => g == i))
+                if (!unknownTagIndexes.Exists(g => g == mch.Index))
                 {
-                    switch (matches[i].Index)
+                    switch (mch.Index)
                     {
                         case 0:
-                            localDelegate = new WriteOutFunction(existingTags.Find(t => t.Name == matches[i].Groups["tagStart"].Value).Write);
-                            methodInputs.Add(matches[i].Groups["tagContent"].Value);
-                            lastIndex = matches[i].Length;
+                            localDelegate = new WriteOutFunction(existingTags.Find(t => t.Name == mch.Groups["tagStart"].Value).Write);
+                            methodInputs.Add(mch.Groups["tagContent"].Value);
+                            lastIndex = mch.Length;
                             break;
                         default:
-                            methodInputs.Add(input.Substring(0, matches[i].Index));
-                            methodInputs.Add(matches[i].Groups["tagContent"].Value);
+                            methodInputs.Add(input.Substring(0, mch.Index));
+                            methodInputs.Add(mch.Groups["tagContent"].Value);
                             localDelegate = new WriteOutFunction(Console.Write);
-                            localDelegate += existingTags.Find(t => t.Name == matches[i].Groups["tagStart"].Value).Write;
-                            lastIndex = matches[i].Index + matches[i].Length;
+                            localDelegate += existingTags.Find(t => t.Name == mch.Groups["tagStart"].Value).Write;
+                            lastIndex = mch.Index + mch.Length;
                             break;
                     }
+                    break;
                 }
             }
 
 
-            //ujasnění kde začíná tag s jakým jménem
-            foreach (Match match in matches)
+            //add rest of methods and inputs
+            foreach (Match mch in matches)
             {
-                if(match.Index - lastIndex != 0)
+                if (!unknownTagIndexes.Exists(g => g == mch.Index) && mch.Index != matches[0].Index)
                 {
-                    methodInputs.Add(input.Substring(lastIndex, match.Index - lastIndex));
-                    methodInputs.Add(match.Groups["tagContent"].Value);
-
+                    if (mch.Index - lastIndex != 0)
+                    {
+                        methodInputs.Add(input.Substring(lastIndex, mch.Index - lastIndex));
+                        methodInputs.Add(mch.Groups["tagContent"].Value);
+                        localDelegate += Console.Write;
+                        localDelegate += existingTags.Find(t => t.Name == mch.Groups["tagStart"].Value).Write;
+                    }
+                    else
+                    {
+                        methodInputs.Add(mch.Groups["tagContent"].Value);
+                        localDelegate += existingTags.Find(t => t.Name == mch.Groups["tagStart"].Value).Write;
+                    }
+                    lastIndex = mch.Index + mch.Length;
                 }
             }
-            //  -> naplnit methodInputs rozkouskovaným input pro jednotlivé metody tagů (tagContenty a normální text)
 
-            
-
-            //navěšení metod na localDelegate
-            //volání metod pod localDelegate pomocí foreach se vstupy z methodInputs
+            for (int i = 0; i < methodInputs.Count; i++)
+            {
+                localDelegate.Invoke(methodInputs[i]);
+            }
 
             Console.ReadKey();
         }
