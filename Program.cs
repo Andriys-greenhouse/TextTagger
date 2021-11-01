@@ -23,7 +23,7 @@ namespace TextTagger
                 input = sb.ToString();
             }
             else { input = args[0]; }
-            Regex rx = new Regex(@"\<(?<tagStart>.((?!\<).)*)\>(?<tagContent>.((?!\<).)*)\<\/(?<tagEnd>.((?!\<).)*)\>");
+            Regex rx = new Regex(@"\<(?<tagStart>.((?!\<).)*)\>(?<tagContent>.((?!\<).)*)\<\/\1\>");
 
             //iniciation of tags
             List<Tag> existingTags = new List<Tag>();
@@ -37,19 +37,63 @@ namespace TextTagger
             List<string> methodInputs = new List<string>();
             WriteOutFunction localDelegate;
 
-            //kontrola pořadí tagů
+            //searching for unknown tags
+            List<int> unknownTagIndexes = new List<int>();
+            bool isKnown = false;
+            foreach (Match ma in matches)
+            {
+                foreach (Tag tg in existingTags)
+                {
+                    if (ma.Groups["tagStart"].Value == tg.Name) 
+                    { 
+                        isKnown = true; 
+                    }
+                }
+
+                if (!isKnown) 
+                {
+                    unknownTagIndexes.Add(ma.Index);
+                }
+            }
+
+            //initialize localDelegate
+            int lastIndex = 0;
+            for (int i = 0; i < matches.Count; i++)
+            {
+                if (!unknownTagIndexes.Exists(g => g == i))
+                {
+                    switch (matches[i].Index)
+                    {
+                        case 0:
+                            localDelegate = new WriteOutFunction(existingTags.Find(t => t.Name == matches[i].Groups["tagStart"].Value).Write);
+                            methodInputs.Add(matches[i].Groups["tagContent"].Value);
+                            lastIndex = matches[i].Length;
+                            break;
+                        default:
+                            methodInputs.Add(input.Substring(0, matches[i].Index));
+                            methodInputs.Add(matches[i].Groups["tagContent"].Value);
+                            localDelegate = new WriteOutFunction(Console.Write);
+                            localDelegate += existingTags.Find(t => t.Name == matches[i].Groups["tagStart"].Value).Write;
+                            lastIndex = matches[i].Index + matches[i].Length;
+                            break;
+                    }
+                }
+            }
+
+
             //ujasnění kde začíná tag s jakým jménem
+            foreach (Match match in matches)
+            {
+                if(match.Index - lastIndex != 0)
+                {
+                    methodInputs.Add(input.Substring(lastIndex, match.Index - lastIndex));
+                    methodInputs.Add(match.Groups["tagContent"].Value);
+
+                }
+            }
             //  -> naplnit methodInputs rozkouskovaným input pro jednotlivé metody tagů (tagContenty a normální text)
 
-            switch (matches[0].Index)
-            {
-                case 0:
-                    //localDelegate = new WriteOutFunction( metodaPrvnihoTagu );
-                    break;
-                default:
-                    localDelegate = new WriteOutFunction(Console.Write);
-                    break;
-            }
+            
 
             //navěšení metod na localDelegate
             //volání metod pod localDelegate pomocí foreach se vstupy z methodInputs
@@ -108,4 +152,5 @@ used resources:
     https://regex101.com/
     https://stackoverflow.com/questions/406230/regular-expression-to-match-a-line-that-doesnt-contain-a-word
     https://www.regular-expressions.info/refext.html
+    https://www.regular-expressions.info/backref.html
  */
